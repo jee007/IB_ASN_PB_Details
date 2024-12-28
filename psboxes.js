@@ -1,6 +1,6 @@
 javascript:(async () => {
-  const pUrl = "https://inbound-api-inbound.sc.noon.team/reports/pending_asn?warehouse_code=W00000004A&format=html",
-    pb = document.createElement('progress');
+  const pUrl = "https://inbound-api-inbound.sc.noon.team/reports/pending_asn?warehouse_code=W00000004A&format=html";
+  const pb = document.createElement('progress');
   pb.max = 100;
   pb.value = 0;
   pb.style.cssText = 'position:fixed;top:0;left:0;width:100%;z-index:1000;';
@@ -14,10 +14,10 @@ javascript:(async () => {
       return;
     }
 
-    const pHtml = await pRes.text(),
-      parser = new DOMParser(),
-      pDoc = parser.parseFromString(pHtml, 'text/html'),
-      aTbl = pDoc.querySelector('table');
+    const pHtml = await pRes.text();
+    const parser = new DOMParser();
+    const pDoc = parser.parseFromString(pHtml, 'text/html');
+    const aTbl = pDoc.querySelector('table');
 
     if (!aTbl) {
       console.error("No table found in pending ASN response.");
@@ -25,8 +25,7 @@ javascript:(async () => {
       return;
     }
 
-    const aNrs = Array.from(aTbl.querySelectorAll('tr:nth-child(n+2) td:first-child'))
-      .map(c => c.textContent.trim());
+    const aNrs = Array.from(aTbl.querySelectorAll('tr:nth-child(n+2) td:first-child')).map(c => c.textContent.trim());
     const outDiv = document.createElement('div');
     document.body.appendChild(outDiv);
 
@@ -35,11 +34,10 @@ javascript:(async () => {
     outDiv.appendChild(mainH);
 
     let allAwbNrs = [];
-
     for (let asnIdx = 0; asnIdx < aNrs.length; asnIdx++) {
-      const asnNr = aNrs[asnIdx],
-        abUrl = `https://inbound-api-inbound.sc.noon.team/reports/asn_boxes?asn_nr=${asnNr}&format=html`,
-        abRes = await fetch(abUrl);
+      const asnNr = aNrs[asnIdx];
+      const abUrl = `https://inbound-api-inbound.sc.noon.team/reports/asn_boxes?asn_nr=${asnNr}&format=html`;
+      const abRes = await fetch(abUrl);
 
       if (!abRes.ok) {
         const errDiv = document.createElement('div');
@@ -48,9 +46,9 @@ javascript:(async () => {
         continue;
       }
 
-      const abHtml = await abRes.text(),
-        abDoc = parser.parseFromString(abHtml, 'text/html'),
-        bTbl = abDoc.querySelector('table');
+      const abHtml = await abRes.text();
+      const abDoc = parser.parseFromString(abHtml, 'text/html');
+      const bTbl = abDoc.querySelector('table');
 
       if (!bTbl) {
         const errDiv = document.createElement('div');
@@ -59,16 +57,19 @@ javascript:(async () => {
         continue;
       }
 
-      allAwbNrs.push(...Array.from(bTbl.querySelectorAll('tr:nth-child(n+2) td:nth-child(2)'))
-        .map(c => c.textContent.trim()));
+      allAwbNrs.push(...Array.from(bTbl.querySelectorAll('tr:nth-child(n+2) td:nth-child(2)')).map(c => c.textContent.trim()));
       pb.value = ((asnIdx + 1) / aNrs.length) * 50;
     }
 
     const urls = allAwbNrs.map(awb => `https://inbound-api-inbound.sc.noon.team/reports/box_status?awb_nr=${awb}&format=html`);
-    let csvC = "", hExt = false, allHdrs = [];
+    let csvC = "";
+    let hExt = false;
+    let allHdrs = [];
 
     for (let i = 0; i < urls.length; i++) {
-      const url = urls[i], res = await fetch(url);
+      const url = urls[i];
+      const res = await fetch(url);
+
       if (!res.ok) {
         const errDiv = document.createElement('div');
         errDiv.innerHTML = `<p style="color:red">Error fetching URL: ${url} (${res.status} ${res.statusText})</p>`;
@@ -76,9 +77,9 @@ javascript:(async () => {
         continue;
       }
 
-      const html = await res.text(),
-        doc = parser.parseFromString(html, 'text/html'),
-        tbl = doc.querySelector('table');
+      const html = await res.text();
+      const doc = parser.parseFromString(html, 'text/html');
+      const tbl = doc.querySelector('table');
 
       if (tbl) {
         const rows = tbl.querySelectorAll('tr');
@@ -93,9 +94,6 @@ javascript:(async () => {
         }
       }
 
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = `<hr>${html}<hr><br>`;
-      outDiv.append(...tempDiv.childNodes);
       pb.value = 50 + ((i + 1) / urls.length) * 50;
     }
 
@@ -104,8 +102,8 @@ javascript:(async () => {
     compMsg.style.cssText = 'position:fixed;top:0;left:0;width:100%;background-color:#f0f0f0;padding:10px;text-align:center;z-index:1001;';
     document.body.replaceChild(compMsg, pb);
 
-    const csvFile = new Blob([csvC], { type: "text/tab-separated-values" }),
-      dLink = document.createElement('a');
+    const csvFile = new Blob([csvC], { type: "text/tab-separated-values" });
+    const dLink = document.createElement('a');
     dLink.href = URL.createObjectURL(csvFile);
     dLink.download = "box_status_data.tsv";
     dLink.style.display = "none";
