@@ -1,5 +1,5 @@
 javascript:(async () => {
-  const pUrl = "https://inbound-api-inbound.sc.noon.team/reports/pending_asn?warehouse_code=W00000004A&format=html";
+  const pUrl = "https://inbound-api-inbound.sc.noon.team/reports/pending_asn?warehouse_code=W00053710A&format=html";
   const pb = document.createElement('progress');
   pb.max = 100;
   pb.value = 0;
