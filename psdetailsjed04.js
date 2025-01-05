@@ -105,7 +105,7 @@ javascript:(async () => {
     const csvFile = new Blob([csvC], { type: "text/tab-separated-values" });
     const dLink = document.createElement('a');
     dLink.href = URL.createObjectURL(csvFile);
-    dLink.download = "box_status_data.tsv";
+    dLink.download = "box_status_data_jed04.tsv";
     dLink.style.display = "none";
     document.body.appendChild(dLink);
     dLink.click();
