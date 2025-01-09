@@ -1,120 +1,121 @@
-javascript:(async () => {
-  const pUrl = "https://inbound-api-inbound.sc.noon.team/reports/pending_asn?warehouse_code=W00000004A&format=html";
-  const pb = document.createElement('progress');
-  pb.max = 100;
-  pb.value = 0;
-  pb.style.cssText = 'position:fixed;top:0;left:0;width:100%;z-index:1000;';
-  document.body.appendChild(pb);
+javascript: (async () => {
+    const cacheKey = "psboxes_cache";
+    const cacheExpiry = 3600000; // 1 hour
+    const pUrl = "https://inbound-api-inbound.sc.noon.team/reports/pending_asn?warehouse_code=W00053710A&format=json";
 
-  try {
-    const pRes = await fetch(pUrl);
-    if (!pRes.ok) {
-      console.error("Error fetching pending ASN:", pRes.status, pRes.statusText);
-      document.body.removeChild(pb);
-      return;
+    async function fetchWithBackoff(url, maxRetries = 5, retryDelay = 2000) {
+      for (let i = 0; i <= maxRetries; i++) {
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            return await response.json();
+          } else if (response.status === 429) {
+            console.log('Rate limit hit, retrying in ' + retryDelay / 1000 + ' seconds');
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            retryDelay *= 2;
+          } else {
+            throw new Error(`Request failed with status: ${response.status}`);
+          }
+        } catch (e) {
+          console.log('Error during fetch:', e);
+          return null;
+        }
+      }
+      console.log("Max retries reached, could not fetch data.");
+      return null;
     }
 
-    const pHtml = await pRes.text();
-    const parser = new DOMParser();
-    const pDoc = parser.parseFromString(pHtml, 'text/html');
-    const aTbl = pDoc.querySelector('table');
 
-    if (!aTbl) {
-      console.error("No table found in pending ASN response.");
-      document.body.removeChild(pb);
-      return;
+    function downloadTSV(data, filename) {
+      const blob = new Blob([data], { type: "text/tab-separated-values" });
+      const url = URL.createObjectURL(blob);
+      const downloadLink = document.createElement("a");
+      downloadLink.href = url;
+      downloadLink.download = filename;
+      downloadLink.style.display = "none";
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
     }
 
-    const aNrs = Array.from(aTbl.querySelectorAll('tr:nth-child(n+2) td:first-child')).map(c => c.textContent.trim());
-    const outDiv = document.createElement('div');
-    document.body.appendChild(outDiv);
+    let cachedData = localStorage.getItem(cacheKey);
+    let asnData;
 
-    const mainH = document.createElement('h2');
-    mainH.textContent = "Box Data";
-    outDiv.appendChild(mainH);
+    if (cachedData) {
+        try {
+            const parsedCache = JSON.parse(cachedData);
+          if (parsedCache && parsedCache.expiry && Date.now() < parsedCache.expiry) {
+              console.log("Data loaded from cache (psboxes)");
+              asnData = parsedCache.data;
+          } else {
+             console.log("Cache expired, fetching fresh data (psboxes)");
+              asnData = await fetchWithBackoff(pUrl);
+            if (asnData) {
+               const expiry = Date.now() + cacheExpiry;
+               const cacheData = JSON.stringify({ expiry: expiry, data: asnData });
+               localStorage.setItem(cacheKey, cacheData);
+              }
+          }
+        } catch (e) {
+           console.log("Error parsing cache for psboxes. Fetching new data: ", e);
+             asnData = await fetchWithBackoff(pUrl);
+             if (asnData) {
+                const expiry = Date.now() + cacheExpiry;
+                const cacheData = JSON.stringify({ expiry: expiry, data: asnData });
+                localStorage.setItem(cacheKey, cacheData);
+               }
+          }
+      } else {
+          console.log("No cache found, fetching fresh data (psboxes)");
+          asnData = await fetchWithBackoff(pUrl);
+          if (asnData) {
+             const expiry = Date.now() + cacheExpiry;
+             const cacheData = JSON.stringify({ expiry: expiry, data: asnData });
+            localStorage.setItem(cacheKey, cacheData);
+           }
+      }
 
+
+    if (!asnData || !asnData.rows) {
+      console.error("Invalid asn data received");
+        return;
+    }
+
+    const aNrs = asnData.rows.map(row => row["ASN Number"]);
     let allAwbNrs = [];
-    for (let asnIdx = 0; asnIdx < aNrs.length; asnIdx++) {
-      const asnNr = aNrs[asnIdx];
-      const abUrl = `https://inbound-api-inbound.sc.noon.team/reports/asn_boxes?asn_nr=${asnNr}&format=html`;
-      const abRes = await fetch(abUrl);
 
-      if (!abRes.ok) {
-        const errDiv = document.createElement('div');
-        errDiv.innerHTML = `<p style="color:red">Error fetching ASN Boxes URL: ${abUrl} (${abRes.status} ${abRes.statusText})</p>`;
-        outDiv.appendChild(errDiv);
-        continue;
-      }
+    for (const asnNr of aNrs) {
+         const abUrl = `https://inbound-api-inbound.sc.noon.team/reports/asn_boxes?asn_nr=${asnNr}&format=json`;
+         const boxesData = await fetchWithBackoff(abUrl);
 
-      const abHtml = await abRes.text();
-      const abDoc = parser.parseFromString(abHtml, 'text/html');
-      const bTbl = abDoc.querySelector('table');
+         if(boxesData && boxesData.rows) {
+           allAwbNrs.push(...boxesData.rows.map(row => row["AWB Number"]));
+         }
 
-      if (!bTbl) {
-        const errDiv = document.createElement('div');
-        errDiv.innerHTML = `<p style="color:red">No table found in ASN Boxes URL: ${abUrl}</p>`;
-        outDiv.appendChild(errDiv);
-        continue;
-      }
-
-      allAwbNrs.push(...Array.from(bTbl.querySelectorAll('tr:nth-child(n+2) td:nth-child(2)')).map(c => c.textContent.trim()));
-      pb.value = ((asnIdx + 1) / aNrs.length) * 50;
     }
 
-    const urls = allAwbNrs.map(awb => `https://inbound-api-inbound.sc.noon.team/reports/box_status?awb_nr=${awb}&format=html`);
-    let csvC = "";
-    let hExt = false;
-    let allHdrs = [];
+     let csvC = "";
+     let hExt = false;
+     let allHdrs = [];
 
-    for (let i = 0; i < urls.length; i++) {
-      const url = urls[i];
-      const res = await fetch(url);
 
-      if (!res.ok) {
-        const errDiv = document.createElement('div');
-        errDiv.innerHTML = `<p style="color:red">Error fetching URL: ${url} (${res.status} ${res.statusText})</p>`;
-        outDiv.appendChild(errDiv);
-        continue;
-      }
+     for (let i = 0; i < allAwbNrs.length; i++) {
+       const awb = allAwbNrs[i];
+        const url = `https://inbound-api-inbound.sc.noon.team/reports/box_status?awb_nr=${awb}&format=json`;
+         const boxStatus = await fetchWithBackoff(url);
 
-      const html = await res.text();
-      const doc = parser.parseFromString(html, 'text/html');
-      const tbl = doc.querySelector('table');
-
-      if (tbl) {
-        const rows = tbl.querySelectorAll('tr');
-        if (!hExt) {
-          allHdrs = Array.from(rows[0].querySelectorAll('th')).map(th => th.textContent.trim());
-          csvC += allHdrs.join('\t') + '\n';
-          hExt = true;
-        }
-
-        for (let j = 1; j < rows.length; j++) {
-          csvC += Array.from(rows[j].querySelectorAll('td')).map(c => c.textContent.trim()).join('\t') + '\n';
-        }
-      }
-
-      pb.value = 50 + ((i + 1) / urls.length) * 50;
+       if (boxStatus && boxStatus.rows) {
+           if (!hExt) {
+              allHdrs = Object.keys(boxStatus.rows[0]);
+              csvC += allHdrs.join("\t") + '\n';
+              hExt = true;
+           }
+            boxStatus.rows.forEach(row => {
+             csvC += allHdrs.map(header => row[header] != null ? String(row[header]) : '').join('\t') + '\n';
+            });
+       }
     }
 
-    const compMsg = document.createElement('div');
-    compMsg.textContent = "Fetched all data.";
-    compMsg.style.cssText = 'position:fixed;top:0;left:0;width:100%;background-color:#f0f0f0;padding:10px;text-align:center;z-index:1001;';
-    document.body.replaceChild(compMsg, pb);
+     downloadTSV(csvC, "box_status_data.tsv");
 
-    const csvFile = new Blob([csvC], { type: "text/tab-separated-values" });
-    const dLink = document.createElement('a');
-    dLink.href = URL.createObjectURL(csvFile);
-    dLink.download = "box_status_data.tsv";
-    dLink.style.display = "none";
-    document.body.appendChild(dLink);
-    dLink.click();
-    document.body.removeChild(dLink);
-
-  } catch (e) {
-    const errDiv = document.createElement('div');
-    errDiv.innerHTML = `<p style="color:red">An error occurred: ${e.message}</p>`;
-    document.body.appendChild(errDiv);
-    document.body.removeChild(pb);
-  }
-})();
+  })();
