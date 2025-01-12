@@ -1,120 +1,157 @@
 javascript:(async () => {
-  const pUrl = "https://inbound-api-inbound.sc.noon.team/reports/pending_asn?warehouse_code=W00000004A&format=html";
-  const pb = document.createElement('progress');
-  pb.max = 100;
-  pb.value = 0;
-  pb.style.cssText = 'position:fixed;top:0;left:0;width:100%;z-index:1000;';
-  document.body.appendChild(pb);
+  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const MAX_CONCURRENT_REQUESTS = 10;
+  const DELAY_BETWEEN_BATCHES = 2000;
+  const baseUrl = "https://inbound-api-inbound.sc.noon.team/reports/";
+  const pendingUrl = `${baseUrl}pending_asn?warehouse_code=W00000004A&format=html`;
+
+  // Create status div
+  const statusDiv = document.createElement('div');
+  statusDiv.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px;z-index:1000;border-radius:5px;';
+  statusDiv.textContent = "Code initiated... Processing requests.";
+  document.body.appendChild(statusDiv);
+
+  // Create progress bar
+  const progressBar = document.createElement('progress');
+  progressBar.max = 100;
+  progressBar.value = 0;
+  progressBar.style.cssText = 'position:fixed;top:0;left:0;width:100%;z-index:999;';
+  document.body.appendChild(progressBar);
+
+  const errorLog = [];
+  let csvContent = "";
+  let headersExtracted = false;
+
+  const logError = (url, status, statusText) => {
+    console.error(`Error fetching URL: ${url} (${status} ${statusText})`);
+    errorLog.push({ url, status, statusText });
+  };
+
+  const fetchWithRetry = async (url, retries = 3, backoff = 500) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) return res;
+        logError(url, res.status, res.statusText);
+      } catch (e) {
+        logError(url, 0, e.message);
+      }
+      await delay(backoff * (i + 1));
+    }
+    return null;
+  };
 
   try {
-    const pRes = await fetch(pUrl);
-    if (!pRes.ok) {
-      console.error("Error fetching pending ASN:", pRes.status, pRes.statusText);
-      document.body.removeChild(pb);
+    const pendingRes = await fetchWithRetry(pendingUrl);
+    if (!pendingRes) {
+      console.error("Failed to fetch pending ASNs.");
+      statusDiv.textContent += " Error fetching pending ASNs.";
       return;
     }
 
-    const pHtml = await pRes.text();
+    const pendingHtml = await pendingRes.text();
     const parser = new DOMParser();
-    const pDoc = parser.parseFromString(pHtml, 'text/html');
-    const aTbl = pDoc.querySelector('table');
+    const pendingDoc = parser.parseFromString(pendingHtml, 'text/html');
+    const table = pendingDoc.querySelector('table');
 
-    if (!aTbl) {
+    if (!table) {
       console.error("No table found in pending ASN response.");
-      document.body.removeChild(pb);
+      statusDiv.textContent += " No table found in pending ASN response.";
       return;
     }
 
-    const aNrs = Array.from(aTbl.querySelectorAll('tr:nth-child(n+2) td:first-child')).map(c => c.textContent.trim());
-    const outDiv = document.createElement('div');
-    document.body.appendChild(outDiv);
-
-    const mainH = document.createElement('h2');
-    mainH.textContent = "Box Data";
-    outDiv.appendChild(mainH);
-
-    let allAwbNrs = [];
-    for (let asnIdx = 0; asnIdx < aNrs.length; asnIdx++) {
-      const asnNr = aNrs[asnIdx];
-      const abUrl = `https://inbound-api-inbound.sc.noon.team/reports/asn_boxes?asn_nr=${asnNr}&format=html`;
-      const abRes = await fetch(abUrl);
-
-      if (!abRes.ok) {
-        const errDiv = document.createElement('div');
-        errDiv.innerHTML = `<p style="color:red">Error fetching ASN Boxes URL: ${abUrl} (${abRes.status} ${abRes.statusText})</p>`;
-        outDiv.appendChild(errDiv);
-        continue;
-      }
-
-      const abHtml = await abRes.text();
-      const abDoc = parser.parseFromString(abHtml, 'text/html');
-      const bTbl = abDoc.querySelector('table');
-
-      if (!bTbl) {
-        const errDiv = document.createElement('div');
-        errDiv.innerHTML = `<p style="color:red">No table found in ASN Boxes URL: ${abUrl}</p>`;
-        outDiv.appendChild(errDiv);
-        continue;
-      }
-
-      allAwbNrs.push(...Array.from(bTbl.querySelectorAll('tr:nth-child(n+2) td:nth-child(2)')).map(c => c.textContent.trim()));
-      pb.value = ((asnIdx + 1) / aNrs.length) * 50;
+    const asnNumbers = Array.from(table.querySelectorAll('tr:nth-child(n+2) td:first-child')).map(td => td.textContent.trim());
+    if (asnNumbers.length === 0) {
+      console.error("No ASN numbers found.");
+      statusDiv.textContent += " No ASN numbers found.";
+      return;
     }
 
-    const urls = allAwbNrs.map(awb => `https://inbound-api-inbound.sc.noon.team/reports/box_status?awb_nr=${awb}&format=html`);
-    let csvC = "";
-    let hExt = false;
-    let allHdrs = [];
+    const urls = [];
+    for (const asnNr of asnNumbers) {
+      const boxesUrl = `${baseUrl}asn_boxes?asn_nr=${asnNr}&format=html`;
+      const boxesRes = await fetchWithRetry(boxesUrl);
+      if (!boxesRes) continue;
 
-    for (let i = 0; i < urls.length; i++) {
-      const url = urls[i];
-      const res = await fetch(url);
+      const boxesHtml = await boxesRes.text();
+      const boxesDoc = parser.parseFromString(boxesHtml, 'text/html');
+      const boxTable = boxesDoc.querySelector('table');
 
-      if (!res.ok) {
-        const errDiv = document.createElement('div');
-        errDiv.innerHTML = `<p style="color:red">Error fetching URL: ${url} (${res.status} ${res.statusText})</p>`;
-        outDiv.appendChild(errDiv);
+      if (!boxTable) {
+        logError(boxesUrl, 404, "No table found");
         continue;
       }
 
-      const html = await res.text();
-      const doc = parser.parseFromString(html, 'text/html');
-      const tbl = doc.querySelector('table');
-
-      if (tbl) {
-        const rows = tbl.querySelectorAll('tr');
-        if (!hExt) {
-          allHdrs = Array.from(rows[0].querySelectorAll('th')).map(th => th.textContent.trim());
-          csvC += allHdrs.join('\t') + '\n';
-          hExt = true;
-        }
-
-        for (let j = 1; j < rows.length; j++) {
-          csvC += Array.from(rows[j].querySelectorAll('td')).map(c => c.textContent.trim()).join('\t') + '\n';
-        }
-      }
-
-      pb.value = 50 + ((i + 1) / urls.length) * 50;
+      const awbNumbers = Array.from(boxTable.querySelectorAll('tr:nth-child(n+2) td:nth-child(2)')).map(td => td.textContent.trim());
+      urls.push(...awbNumbers.map(awb => `${baseUrl}box_status?awb_nr=${awb}&format=html`));
     }
 
-    const compMsg = document.createElement('div');
-    compMsg.textContent = "Fetched all data.";
-    compMsg.style.cssText = 'position:fixed;top:0;left:0;width:100%;background-color:#f0f0f0;padding:10px;text-align:center;z-index:1001;';
-    document.body.replaceChild(compMsg, pb);
+    const totalRequests = urls.length;
+    if (totalRequests === 0) {
+      console.error("No URLs generated for box status.");
+      statusDiv.textContent += " No URLs generated for box status.";
+      return;
+    }
+    progressBar.max = totalRequests;
 
-    const csvFile = new Blob([csvC], { type: "text/tab-separated-values" });
-    const dLink = document.createElement('a');
-    dLink.href = URL.createObjectURL(csvFile);
-    dLink.download = "box_status_data.tsv";
-    dLink.style.display = "none";
-    document.body.appendChild(dLink);
-    dLink.click();
-    document.body.removeChild(dLink);
+    const processBatch = async batch => {
+      const results = await Promise.all(
+        batch.map(async url => {
+          const res = await fetchWithRetry(url);
+          if (res) {
+            const html = await res.text();
+            const doc = parser.parseFromString(html, 'text/html');
+            const tbl = doc.querySelector('table');
 
-  } catch (e) {
-    const errDiv = document.createElement('div');
-    errDiv.innerHTML = `<p style="color:red">An error occurred: ${e.message}</p>`;
-    document.body.appendChild(errDiv);
-    document.body.removeChild(pb);
+            if (tbl) {
+              const rows = tbl.querySelectorAll('tr');
+              if (!headersExtracted && rows.length > 0) {
+                const headers = Array.from(rows[0].querySelectorAll('th')).map(th => th.textContent.trim());
+                csvContent += headers.join('\t') + '\n';
+                headersExtracted = true;
+              }
+              for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                csvContent += Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim()).join('\t') + '\n';
+              }
+            }
+          }
+          progressBar.value++;
+        })
+      );
+      await delay(DELAY_BETWEEN_BATCHES);
+    };
+
+    for (let i = 0; i < urls.length; i += MAX_CONCURRENT_REQUESTS) {
+      const batch = urls.slice(i, i + MAX_CONCURRENT_REQUESTS);
+      await processBatch(batch);
+    }
+
+    console.log("All requests completed.");
+    console.log("Error Log:", errorLog);
+    console.log("CSV Content:", csvContent);
+
+    if (csvContent) {
+      const csvFile = new Blob([csvContent], { type: "text/tab-separated-values" });
+      const downloadLink = document.createElement('a');
+      downloadLink.href = URL.createObjectURL(csvFile);
+      downloadLink.download = "box_status_data.tsv";
+      downloadLink.style.display = "none";
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+
+      statusDiv.textContent += " Download completed successfully.";
+    } else {
+      statusDiv.textContent += " No data to download.";
+    }
+  } catch (error) {
+    console.error("An unexpected error occurred:", error.message);
+    statusDiv.textContent += ` Error: ${error.message}`;
+  } finally {
+    setTimeout(() => {
+      progressBar.remove();
+      statusDiv.remove();
+    }, 10000); // Keep the message for 10 seconds before removing
   }
 })();
