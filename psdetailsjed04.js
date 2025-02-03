@@ -3,7 +3,7 @@ javascript:(async () => {
   const MAX_CONCURRENT_REQUESTS = 10;
   const DELAY_BETWEEN_BATCHES = 2000;
   const baseUrl = "https://inbound-api-inbound.sc.noon.team/reports/";
-  const pendingUrl = `${baseUrl}pending_asn?warehouse_code=W00000004A&format=html`;
+  const pendingUrl = `${baseUrl}pending_asn?warehouse_code=W00053710A&format=html`;
 
   // Create status div
   const statusDiv = document.createElement('div');
