@@ -33,7 +33,7 @@ javascript: (async function() {
     const url = URL.createObjectURL(blob);
     const downloadLink = document.createElement("a");
     downloadLink.href = url;
-    downloadLink.download = "wh_asn.tsv";
+    downloadLink.download = "wh_asn_JED04.tsv";
     downloadLink.style.display = "none";
     document.body.appendChild(downloadLink);
     downloadLink.click();
