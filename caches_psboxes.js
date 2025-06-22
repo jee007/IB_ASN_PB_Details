@@ -1,7 +1,7 @@
 javascript: (async () => {
     const cacheKey = "psboxes_cache";
     const cacheExpiry = 3600000; // 1 hour
-    const pUrl = "https://inbound-api-inbound.sc.noon.team/reports/pending_asn?warehouse_code=W00053710A&format=json";
+    const pUrl = "https://inbound-api-inbound.noon.team/reports/pending_asn?warehouse_code=W00053710A&format=json";
 
     async function fetchWithBackoff(url, maxRetries = 5, retryDelay = 2000) {
       for (let i = 0; i <= maxRetries; i++) {
@@ -85,7 +85,7 @@ javascript: (async () => {
     let allAwbNrs = [];
 
     for (const asnNr of aNrs) {
-         const abUrl = `https://inbound-api-inbound.sc.noon.team/reports/asn_boxes?asn_nr=${asnNr}&format=json`;
+         const abUrl = `https://inbound-api-inbound.noon.team/reports/asn_boxes?asn_nr=${asnNr}&format=json`;
          const boxesData = await fetchWithBackoff(abUrl);
 
          if(boxesData && boxesData.rows) {
@@ -101,7 +101,7 @@ javascript: (async () => {
 
      for (let i = 0; i < allAwbNrs.length; i++) {
        const awb = allAwbNrs[i];
-        const url = `https://inbound-api-inbound.sc.noon.team/reports/box_status?awb_nr=${awb}&format=json`;
+        const url = `https://inbound-api-inbound.noon.team/reports/box_status?awb_nr=${awb}&format=json`;
          const boxStatus = await fetchWithBackoff(url);
 
        if (boxStatus && boxStatus.rows) {
