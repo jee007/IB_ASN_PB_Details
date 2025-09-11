@@ -113,6 +113,28 @@ javascript:(async function(){
     completionMessage.style.zIndex = '1001';
     document.body.replaceChild(completionMessage, progressBar);
 
+    // Define the CSV URL (change JED01 to JED04 as needed)
+const csvUrl = "https://wms-api-repl.noon.team/reports/asn_putaway_item_pendency_v2?warehouse_code=JED01&format=html&export=csv";
+
+try {
+  const csvResponse = await fetch(csvUrl);
+  if (!csvResponse.ok) {
+    console.error("Failed to download CSV:", csvResponse.status, csvResponse.statusText);
+  } else {
+    const csvData = await csvResponse.text();
+    const csvBlob = new Blob([csvData], { type: "text/csv" });
+    const csvDownloadLink = document.createElement("a");
+    csvDownloadLink.href = URL.createObjectURL(csvBlob);
+    csvDownloadLink.download = "asn_putaway_item_pendency_JED01.csv";
+    csvDownloadLink.style.display = "none";
+    document.body.appendChild(csvDownloadLink);
+    csvDownloadLink.click();
+    document.body.removeChild(csvDownloadLink);
+  }
+} catch (csvError) {
+  console.error("Error fetching or downloading the CSV:", csvError);
+}
+
     const csvFile = new Blob([csvContent], { type: "text/tab-separated-values" });
     const downloadLink = document.createElement("a");
     downloadLink.href = URL.createObjectURL(csvFile);
