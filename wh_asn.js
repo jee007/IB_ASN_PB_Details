@@ -1,5 +1,5 @@
 javascript: (async function() {
-  const pendingAsnUrl = "https://inbound-api-inbound.noon.team/reports/pending_asn?warehouse_code=W00000004A&format=json";
+  const pendingAsnUrl = "https://inbound-api-inbound.noon.team/reports/pending_asn?warehouse_code=JED01&format=json";
 
   try {
     const response = await fetch(pendingAsnUrl);
