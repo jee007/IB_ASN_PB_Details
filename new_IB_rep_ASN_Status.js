@@ -130,20 +130,38 @@ javascript:(async function () {
       }
 
     } catch (csvError) {
-      console.warn("CSV download failed or no data, generating empty fallback file...");
+  console.warn("CSV download failed or no data, generating empty fallback file...");
 
-      const fallbackHeaders = ["box_barcode","asn_nr","platform_unique_item_src","warehouse","item_status","user_email","user_name","scanned_barcode","exref_type","active_location","put_location","putaway_qty","reported_qty","packed_qty","job_started_at","job_closed_at","wms_barcode","box_type_qc","reject_reason_code","sort_id","id_partner","sealed_at","sealed_by","is_transfer_box","pbarcode","pbarcode_canonical","put_location_list"];
-      const dummyRow = fallbackHeaders.map(header => header === "warehouse" ? warehouseCode : "");
-      const emptyCsvContent = fallbackHeaders.join(",") + "\n";
-      const fallbackBlob = new Blob([emptyCsvContent], { type: "text/csv" });
-      const fallbackUrl = URL.createObjectURL(fallbackBlob);
-      const fallbackLink = document.createElement("a");
-      fallbackLink.href = fallbackUrl;
-      fallbackLink.download = `asn_putaway_item_pendency_${warehouseCode}_EMPTY.csv`;
-      document.body.appendChild(fallbackLink);
-      fallbackLink.click();
-      document.body.removeChild(fallbackLink);
-    }
+  const fallbackHeaders = [
+    "box_barcode", "asn_nr", "platform_unique_item_src", "warehouse", "item_status", "user_email", "user_name",
+    "scanned_barcode", "exref_type", "active_location", "put_location", "putaway_qty", "reported_qty", "packed_qty",
+    "job_started_at", "job_closed_at", "wms_barcode", "box_type_qc", "reject_reason_code", "sort_id", "id_partner",
+    "sealed_at", "sealed_by", "is_transfer_box", "pbarcode", "pbarcode_canonical", "put_location_list"
+  ];
+
+  // Determine correct index of warehouse column (case-insensitive)
+  const warehouseIndex = fallbackHeaders.findIndex(h => h.trim().toLowerCase() === "warehouse");
+
+  // Initialize row with empty strings
+  const dummyRow = Array(fallbackHeaders.length).fill("");
+
+  // Set warehouse value in correct column
+  if (warehouseIndex !== -1) {
+    dummyRow[warehouseIndex] = warehouseCode;
+  }
+
+  const emptyCsvContent = fallbackHeaders.join(",") + "\n" + dummyRow.join(",") + "\n";
+
+  const fallbackBlob = new Blob([emptyCsvContent], { type: "text/csv" });
+  const fallbackUrl = URL.createObjectURL(fallbackBlob);
+  const fallbackLink = document.createElement("a");
+  fallbackLink.href = fallbackUrl;
+  fallbackLink.download = `asn_putaway_item_pendency_${warehouseCode}_EMPTY.csv`;
+  document.body.appendChild(fallbackLink);
+  fallbackLink.click();
+  document.body.removeChild(fallbackLink);
+}
+
 
   } catch (error) {
     console.error("An error occurred:", error.message);
