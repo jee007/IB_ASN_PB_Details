@@ -1,15 +1,17 @@
 javascript:(async function () {
-  const pendingAsnUrl = "https://inbound-api-inbound.noon.team/reports/pending_asn?warehouse_code=JED04&format=html";
   const warehouseCode = "JED04";
+  const pendingAsnUrl = `https://inbound-api-inbound.noon.team/reports/pending_asn?warehouse_code=${warehouseCode}&format=html`;
 
   const progressBar = document.createElement('progress');
   progressBar.max = 100;
   progressBar.value = 0;
-  progressBar.style.position = 'fixed';
-  progressBar.style.top = '0';
-  progressBar.style.left = '0';
-  progressBar.style.width = '100%';
-  progressBar.style.zIndex = '1000';
+  Object.assign(progressBar.style, {
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    width: '100%',
+    zIndex: '1000'
+  });
   document.body.appendChild(progressBar);
 
   try {
@@ -18,82 +20,83 @@ javascript:(async function () {
 
     const pendingAsnHtml = await pendingAsnResponse.text();
     const parser = new DOMParser();
-    const pendingAsnDoc = parser.parseFromString(pendingAsnHtml, 'text/html');
-    const asnTable = pendingAsnDoc.querySelector('table');
-    if (!asnTable) throw new Error("ASN Table not found in HTML.");
+    const doc = parser.parseFromString(pendingAsnHtml, 'text/html');
+    const asnTable = doc.querySelector('table');
+    if (!asnTable) throw new Error("ASN Table not found");
 
-    const asnRows = asnTable.querySelectorAll('tr');
-    const headerCells = Array.from(asnRows[0].querySelectorAll('th')).map(th => th.textContent.trim().toLowerCase());
-    const asnIndex = headerCells.indexOf("asn nr");
-    const statusIndex = headerCells.indexOf("inbound status");
-    if (asnIndex === -1 || statusIndex === -1) throw new Error("Required columns not found");
+    const rows = asnTable.querySelectorAll('tr');
+    const headers = Array.from(rows[0].querySelectorAll('th')).map(th => th.textContent.trim().toLowerCase());
+    const asnIndex = headers.indexOf("asn nr");
+    const statusIndex = headers.indexOf("inbound status");
+    if (asnIndex === -1 || statusIndex === -1) throw new Error("Required columns missing");
 
     const asnNumbers = [];
-    for (let i = 1; i < asnRows.length; i++) {
-      const cells = asnRows[i].querySelectorAll('td');
-      if (cells.length > Math.max(asnIndex, statusIndex)) {
-        const asnNumber = cells[asnIndex].textContent.trim();
-        const status = cells[statusIndex].textContent.trim().toLowerCase();
-        if (status !== "gatein_completed") asnNumbers.push(asnNumber);
-      }
+    for (let i = 1; i < rows.length; i++) {
+      const cells = rows[i].querySelectorAll('td');
+      const asn = cells[asnIndex]?.textContent.trim();
+      const status = cells[statusIndex]?.textContent.trim().toLowerCase();
+      if (asn && status !== "gatein_completed") asnNumbers.push(asn);
     }
 
     const urls = asnNumbers.map(asn => `https://inbound-api-inbound.noon.team/reports/asn_boxes?asn_nr=${asn}&format=html`);
-    const outputDiv = document.createElement('div');
-    document.body.appendChild(outputDiv);
-    const mainHeader = document.createElement('h2');
-    mainHeader.textContent = "Combined ASN Data";
-    outputDiv.appendChild(mainHeader);
 
     let csvContent = "";
-    let allHeaders = [];
     let headersExtracted = false;
+    const outputDiv = document.createElement('div');
+    document.body.appendChild(outputDiv);
 
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i];
+
+      // Add delay to avoid 429
+      await new Promise(r => setTimeout(r, 300));
+
       const response = await fetch(url);
       if (!response.ok) {
+        const errMsg = `Error fetching ${url}: ${response.status}`;
+        console.warn(errMsg);
         const errorDiv = document.createElement('div');
-        errorDiv.innerHTML = `<p style="color:red">Error fetching ${url}: ${response.status}</p>`;
+        errorDiv.innerHTML = `<p style="color:red">${errMsg}</p>`;
         outputDiv.appendChild(errorDiv);
         continue;
       }
 
       const html = await response.text();
-      const doc = parser.parseFromString(html, 'text/html');
-      const table = doc.querySelector("table");
+      const page = parser.parseFromString(html, 'text/html');
+      const table = page.querySelector('table');
+      if (!table) continue;
 
-      if (table) {
-        const rows = table.querySelectorAll('tr');
-        if (!headersExtracted) {
-          allHeaders = Array.from(rows[0].querySelectorAll("th")).map(th => th.textContent.trim());
-          csvContent += allHeaders.join('\t') + '\n';
-          headersExtracted = true;
-        }
+      const tableRows = table.querySelectorAll('tr');
+      if (!headersExtracted) {
+        const tableHeaders = Array.from(tableRows[0].querySelectorAll("th")).map(th => th.textContent.trim());
+        csvContent += tableHeaders.join('\t') + '\n';
+        headersExtracted = true;
+      }
 
-        for (let j = 1; j < rows.length; j++) {
-          const cells = Array.from(rows[j].querySelectorAll('td'));
-          const rowData = cells.map(cell => cell.textContent.trim());
-          csvContent += rowData.join('\t') + '\n';
-        }
+      for (let j = 1; j < tableRows.length; j++) {
+        const cells = Array.from(tableRows[j].querySelectorAll('td')).map(td => td.textContent.trim());
+        csvContent += cells.join('\t') + '\n';
       }
 
       progressBar.value = ((i + 1) / urls.length) * 100;
     }
 
-    const completionMessage = document.createElement('div');
-    completionMessage.textContent = "All ASN data has been fetched and displayed.";
-    completionMessage.style.position = 'fixed';
-    completionMessage.style.top = '0';
-    completionMessage.style.left = '0';
-    completionMessage.style.width = '100%';
-    completionMessage.style.backgroundColor = '#d4edda';
-    completionMessage.style.color = '#155724';
-    completionMessage.style.padding = '10px';
-    completionMessage.style.zIndex = '1001';
-    document.body.replaceChild(completionMessage, progressBar);
+    // Replace progress bar with completion message
+    const completeMsg = document.createElement('div');
+    completeMsg.textContent = "All ASN data has been fetched and downloaded.";
+    Object.assign(completeMsg.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '100%',
+      backgroundColor: '#d4edda',
+      color: '#155724',
+      padding: '10px',
+      zIndex: '1001'
+    });
+    document.body.replaceChild(completeMsg, progressBar);
 
-    // ✅ Download ASN TSV file
+    // Download the TSV file
     const tsvBlob = new Blob([csvContent], { type: "text/tab-separated-values" });
     const tsvUrl = URL.createObjectURL(tsvBlob);
     const tsvLink = document.createElement("a");
@@ -103,68 +106,8 @@ javascript:(async function () {
     tsvLink.click();
     document.body.removeChild(tsvLink);
 
-    // ✅ Attempt CSV download from external URL with fallback
-    try {
-      const externalCsvUrl = `https://wms-api-repl.noon.team/reports/asn_putaway_item_pendency_v2?warehouse_code=${warehouseCode}&format=html&export=csv`;
-
-      const response = await fetch(externalCsvUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'text/csv'
-        }
-      });
-
-      const contentType = response.headers.get("content-type");
-
-      if (response.ok && contentType && contentType.includes("text/csv")) {
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const downloadLink = document.createElement("a");
-        downloadLink.href = blobUrl;
-        downloadLink.download = `asn_putaway_item_pendency_${warehouseCode}.csv`;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-      } else {
-        throw new Error("No valid CSV returned");
-      }
-
-    } catch (csvError) {
-  console.warn("CSV download failed or no data, generating empty fallback file...");
-
-  const fallbackHeaders = [
-    "box_barcode", "asn_nr", "platform_unique_item_src", "warehouse", "item_status", "user_email", "user_name",
-    "scanned_barcode", "exref_type", "active_location", "put_location", "putaway_qty", "reported_qty", "packed_qty",
-    "job_started_at", "job_closed_at", "wms_barcode", "box_type_qc", "reject_reason_code", "sort_id", "id_partner",
-    "sealed_at", "sealed_by", "is_transfer_box", "pbarcode", "pbarcode_canonical", "put_location_list"
-  ];
-
-  // Determine correct index of warehouse column (case-insensitive)
-  const warehouseIndex = fallbackHeaders.findIndex(h => h.trim().toLowerCase() === "warehouse");
-
-  // Initialize row with empty strings
-  const dummyRow = Array(fallbackHeaders.length).fill("");
-
-  // Set warehouse value in correct column
-  if (warehouseIndex !== -1) {
-    dummyRow[warehouseIndex] = warehouseCode;
-  }
-
-  const emptyCsvContent = fallbackHeaders.join(",") + "\n" + dummyRow.join(",") + "\n";
-
-  const fallbackBlob = new Blob([emptyCsvContent], { type: "text/csv" });
-  const fallbackUrl = URL.createObjectURL(fallbackBlob);
-  const fallbackLink = document.createElement("a");
-  fallbackLink.href = fallbackUrl;
-  fallbackLink.download = `asn_putaway_item_pendency_${warehouseCode}_EMPTY.csv`;
-  document.body.appendChild(fallbackLink);
-  fallbackLink.click();
-  document.body.removeChild(fallbackLink);
-}
-
-
   } catch (error) {
-    console.error("An error occurred:", error.message);
+    console.error("Script Error:", error);
     const errorDiv = document.createElement('div');
     errorDiv.innerHTML = `<p style="color:red">Error: ${error.message}</p>`;
     document.body.appendChild(errorDiv);
